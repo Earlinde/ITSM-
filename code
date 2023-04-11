@@ -1,0 +1,117 @@
+# -*- coding:UTF-8 -*-
+#提前设置表单中“状态”栏为已指派在最上方的排序法，保存表单
+from bs4 import BeautifulSoup
+import selenium
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium import webdriver
+from selenium.webdriver import ActionChains
+from selenium.common.exceptions import NoSuchElementException
+import pandas as pd
+import lxml
+import time
+import json
+import requests
+import re
+import urllib
+import schedule
+
+name=input("请输入账号：")
+#print(name)
+pwd=input("请输入密码：")
+#print(pwd)
+
+def job():
+	#设置chrome浏览器
+	#获取cowork初始主页，并且要它不关闭
+	chrome_options=Options()
+	chrome_options.add_experimental_option('detach',True)
+	driver=webdriver.Chrome(options=chrome_options)#设置引擎为chrome，打开一个chrome浏览器
+	driver.get('http://co-work.boe.com.cn/flexoffice-web/web/dist/modules/login/login.html?v=1667215312')
+	#窗口最大化
+	driver.maximize_window()
+	#输入账号密码，先写死再说
+	driver.find_element('name','username').send_keys(name)
+	driver.find_element('name','password').send_keys(pwd)
+	driver.find_element(By.CSS_SELECTOR,'[type=submit]').click()
+
+	#登陆后可以直接打开ITSM系统，处理可能的弹窗，如果页面没有刷新出来，再次加载
+	driver.get("http://user.boe.com.cn/static/redirect/index.html?appId=DSM")
+	time.sleep(10)
+	try:
+		driver.switch_to.alert.accept()
+	except:
+		pass
+	try:
+		target=driver.find_element(By.XPATH,'//*[@id="WIN_2_301444200"]/div[2]/div/div[2]')
+		if not target:
+			driver.get("http://user.boe.com.cn/static/redirect/index.html?appId=DSM")
+			time.sleep(10)
+		else:
+			pass
+	#except NoSuchElementException:
+		#print("没刷新出来，重新加载")
+		#driver.get("http://user.boe.com.cn/static/redirect/index.html?appId=DSM")
+		#time.sleep(3)
+	except:
+		pass
+
+	#无论执行成功没都要最后刷新一次页面，然后注销系统
+	try:
+		while True:
+			time.sleep(10)
+			#获取第一个单子的状态
+			sta=driver.find_element(By.XPATH,'//*[@id="T301444200"]/tbody/tr[2]/td[6]/nobr/span').text
+			print(sta)
+			#判断第一条数据的状态是不是“已指派”，是就处理，不是就退出脚本
+			if sta=="已指派":
+				#双击审批单
+				ActionChains(driver).double_click(driver.find_element(By.XPATH,'//*[@id="T301444200"]/tbody/tr[2]/td[6]/nobr')).perform()
+				time.sleep(10)
+				#分支处理故障单和申请单
+
+				#故障单-点击向下的小箭头接单
+				try:
+					driver.find_element(By.XPATH,'//*[@id="WIN_3_301541900"]/a').click()
+					#鼠标悬停在 下一阶段：/html/body/div[4]/div[2]/table/tbody/tr[1]
+					ActionChains(driver).move_to_element(driver.find_element(By.XPATH,'/html/body/div[4]/div[2]/table/tbody/tr[1]')).perform()
+					#点击 工单处理：/html/body/div[5]/div[2]/table/tbody/tr[1]
+					driver.find_element(By.XPATH,'/html/body/div[5]/div[2]/table/tbody/tr[1]').click()
+					time.sleep(10)
+				except:
+					pass
+				#申请单-搜索处理工单按钮
+				try:
+					#找到“处理工单”的按钮，点击
+					stb=driver.find_element(By.XPATH,'//*[@id="WIN_3_536870913"]/div').text
+					print(stb)
+					if stb=="处理工单":
+						driver.find_element(By.XPATH,'//*[@id="WIN_3_536870913"]/div').click()
+					else:
+						pass
+					time.sleep(10)
+				except:
+					pass
+
+				#处理完成后重复：打开itsm主页，查找第一条是否是已指派
+				driver.get("http://user.boe.com.cn/static/redirect/index.html?appId=DSM")
+				time.sleep(10)
+			else:
+				pass
+				break
+	finally:	
+		#最后刷新一次页面，然后注销ITSM系统，注销cowork系统
+		driver.get("http://user.boe.com.cn/static/redirect/index.html?appId=DSM")
+		time.sleep(10)
+		driver.find_element(By.XPATH,'//*[@id="WIN_0_300000044"]/div/div').click()
+		time.sleep(10)
+		ActionChains(driver).move_to_element(driver.find_element(By.XPATH,'//*[@id="main-navbar-collapse"]/div[1]/ul/li[2]/a')).perform()
+		driver.find_element(By.XPATH,'//*[@id="main-navbar-collapse"]/div[1]/ul/li[2]/ul/li[8]/a').click()
+		print("已完成")
+		driver.quit()
+#函数结束，每45分钟执行一次
+schedule.every(45).minutes.do(job)
+while True:
+	schedule.run_pending()
+	time.sleep(10)
+
